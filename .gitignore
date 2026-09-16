@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+!.env.example
+
+# data 
+csv/*.csv
+event_tag/bpo_csv/
+event_tag/data.xlsx
+event_tag/event_tag.xlsx
+
+# Output sinh ra khi chạy tool (screenshot, report)
+capture/screenshots/
+capture/screenshots.zip
+validate-report.html
+summary-report.html
+
+# 
+event_tag/__pycache__/
+tool_validate_bpo.zip
+
+# Claude Code - config ca nhan (settings.json dung chung thi van commit)
+.claude/settings.local.json
+
+# Data khach hang - chan dien rong, phong truong hop de sai thu muc
+*.csv
+*.xlsx
+!csv/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Archive / log
+*.zip
+npm-debug.log*
