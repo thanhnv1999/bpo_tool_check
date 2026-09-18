@@ -142,6 +142,8 @@ function finalizePattern(pattern) {
 // R1.1 both halves present in one file          (error)
 // R1.2 opening or closing marker missing        (error)
 // R1.3 match event outside [kickoff … end]      (error)
+// R1.4 half cannot be inferred from video name   (cảnh báo)
+// R1.5 video name half disagrees with the data   (cảnh báo)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const HALF_MARKERS = {
@@ -150,6 +152,9 @@ const HALF_MARKERS = {
   '2ndhalf_kickoff': { half: '2', kind: 'kickoff' },
   '2ndhalf_end':     { half: '2', kind: 'end' },
 };
+
+const HALF1_NAME_KEYWORDS = ['1st', '前半', '1本目'];
+const HALF2_NAME_KEYWORDS = ['2nd', '後半', '2本目'];
 
 const HALF_LABEL = { '1': 'hiệp 1', '2': 'hiệp 2' };
 const HALF_EXPECTED = {
@@ -161,7 +166,44 @@ const HALF_EXPECTED = {
 // per row; past this many the remainder collapses into one summary finding.
 const HALF_OUTSIDE_LIMIT = 50;
 
-function validateHalfPatterns(rows) {
+// Splits a video file name into its extension-less `stem` and the segment
+// after the last underscore (`suffix`), which is where the half keyword is
+// expected to live (e.g. `..._1st.mp4` → suffix `1st`).
+function getVideoNameSuffix(name) {
+  const stem = name.normalize('NFKC').replace(/\.[A-Za-z0-9]{2,4}$/, '');
+  const idx = stem.lastIndexOf('_');
+  const suffix = idx >= 0 ? stem.slice(idx + 1) : stem;
+  return { stem, suffix };
+}
+
+// Infers which half a video file belongs to from its name. Returns '1', '2'
+// or null when no keyword can be found.
+function inferHalfFromVideoName(name) {
+  if (!name || typeof name !== 'string') return null;
+
+  const { stem, suffix } = getVideoNameSuffix(name);
+  const key = suffix.toLowerCase().trim();
+  if (HALF1_NAME_KEYWORDS.indexOf(key) !== -1) return '1';
+  if (HALF2_NAME_KEYWORDS.indexOf(key) !== -1) return '2';
+
+  // Fallback A: scan the whole stem for the Japanese words, but only when
+  // they are unambiguous (both present tells us nothing).
+  const has1 = stem.indexOf('前半') !== -1;
+  const has2 = stem.indexOf('後半') !== -1;
+  if (has1 && !has2) return '1';
+  if (has2 && !has1) return '2';
+  if (has1 && has2) return null;
+
+  // Fallback B: a bare `<long numeric prefix>_1` / `_2`. The prefix must be
+  // at least 6 digits on purpose, so names ending in e.g. `_Angle_1` (a
+  // camera angle, not a half) are not mistaken for half 1.
+  const m = stem.match(/^\d{6,}_([12])$/);
+  if (m) return m[1];
+
+  return null;
+}
+
+function validateHalfPatterns(rows, meta = {}) {
   const patterns = [];
   const found = [];
 
@@ -200,6 +242,30 @@ function validateHalfPatterns(rows) {
           `Thiếu marker kết hiệp '${HALF_EXPECTED[half].end}' (${HALF_LABEL[half]})`);
       }
     });
+  }
+
+  // ── R1.4 / R1.5: video file name should agree with the half found in data ──
+  const videoRow = rows.find(row => row.video_filename && row.video_filename.trim());
+  const videoName = videoRow ? videoRow.video_filename.trim() : (meta.fileName || '');
+  const inferredHalf = inferHalfFromVideoName(videoName);
+
+  if (inferredHalf === null) {
+    const { suffix } = getVideoNameSuffix(videoName);
+    pushWarn(structural, 'R1.4',
+      `Không xác định được hiệp từ tên video '${videoName}'` +
+      ` (phần đuôi '${suffix}' không nằm trong danh sách từ khóa)` +
+      ` → vui lòng tự kiểm tra file này thuộc hiệp mấy`
+    );
+  } else if (halves.length === 1 && halves[0] !== inferredHalf) {
+    const actualHalf = halves[0];
+    const marker = found.filter(m => m.half === actualHalf && m.kind === 'kickoff')[0] ||
+                   found.filter(m => m.half === actualHalf)[0];
+    pushWarn(structural, 'R1.5',
+      `Tên video '${videoName}' cho thấy ${HALF_LABEL[inferredHalf]},` +
+      ` nhưng dữ liệu trong file là ${HALF_LABEL[actualHalf]}` +
+      ` (dòng ${marker.row._lineNumber}: '${marker.row.value}')` +
+      ` → kiểm tra lại xem có nhầm file hoặc nhầm hiệp không`
+    );
   }
 
   patterns.push(finalizePattern(structural));
@@ -609,10 +675,23 @@ function validateThrowInPatterns(rows) {
 //
 // Every stoppage hands the ball over, so the next row must be `possession`.
 //
-// R5.1 next row is not possession (or missing)         (error)
+// R5.1 next row is not possession (or missing)             (error)
+// R5.2 pk must have a foul right before it                 (error)
+// R5.3 foul and pk must not share the same team             (error)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RESTART_EVENTS = ['foul', 'corner kick', 'offside', 'pk'];
+
+// Walks backward from just before index `i`, skipping only `possession` rows.
+// `period_change` is NOT skipped — hitting it before a real event means the
+// walk has reached the start of a half, which counts as "not found".
+function findPriorRealEvent(rows, i) {
+  for (let j = i - 1; j >= 0; j--) {
+    if (ev(rows[j]) === 'possession') continue;
+    return rows[j];
+  }
+  return null;
+}
 
 function validateRestartPatterns(rows) {
   const patterns = [];
@@ -632,6 +711,32 @@ function validateRestartPatterns(rows) {
         `Dòng ${row._lineNumber}: sau '${row.event}' phải là 'possession'` +
         ` → dòng sau: ${describe(nextRow)}`
       );
+    }
+
+    if (ev(row) === 'pk') {
+      const priorReal = findPriorRealEvent(rows, i);
+      if (priorReal) pattern.lines.push(priorReal._lineNumber);
+
+      if (!priorReal) {
+        pushError(pattern, 'R5.2',
+          `Dòng ${row._lineNumber}: trước 'pk' phải có 'foul'` +
+          ` → không tìm thấy event nào phía trước (bỏ qua các dòng possession)`
+        );
+      } else if (ev(priorReal) !== 'foul') {
+        pushError(pattern, 'R5.2',
+          `Dòng ${row._lineNumber}: trước 'pk' phải có 'foul'` +
+          ` → event gần nhất phía trước là ${describe(priorReal)} (bỏ qua các dòng possession)`
+        );
+      } else {
+        const pkTeam = team(row);
+        const foulTeam = team(priorReal);
+        if (pkTeam !== null && foulTeam !== null && pkTeam === foulTeam) {
+          pushError(pattern, 'R5.3',
+            `Dòng ${row._lineNumber}: 'pk' (team=${row.team}) và 'foul' ở dòng ${priorReal._lineNumber}` +
+            ` (team=${priorReal.team}) phải khác team — foul ghi đội phạm lỗi, pk ghi đội được hưởng`
+          );
+        }
+      }
     }
 
     patterns.push(finalizePattern(pattern));
@@ -744,7 +849,9 @@ const GROUPS = [
     key: 'half',
     label: 'HIỆP',
     title: 'HALF MARKER — 1 file = 1 hiệp, mở bằng *_kickoff và đóng bằng *_end',
-    subtitle: '(Mọi event thi đấu phải nằm trong khoảng [kickoff … end])',
+    subtitle: '(Mọi event thi đấu phải nằm trong khoảng [kickoff … end])' +
+              ' · kèm R1.4 (cảnh báo) không đọc được hiệp từ tên video,' +
+              ' R1.5 (cảnh báo) tên video và dữ liệu không khớp hiệp',
     run: validateHalfPatterns,
   },
   {
@@ -775,7 +882,8 @@ const GROUPS = [
     key: 'restart',
     label: 'RESTART',
     title: 'RESTART PATTERN — foul | corner kick | offside | pk > possession',
-    subtitle: '(Mọi tình huống bóng chết phải được nối bằng possession)',
+    subtitle: '(Mọi tình huống bóng chết phải được nối bằng possession' +
+              ' · kèm R5.2 pk phải có foul phía trước, R5.3 foul và pk phải khác team)',
     run: validateRestartPatterns,
   },
   {
@@ -797,7 +905,8 @@ function validateFile(filePath) {
   const { headers, rows } = parseCSVWithHeaders(filePath);
 
   const groups = GROUPS.map(g => {
-    const patterns = g.run(rows).map((p, idx) => Object.assign({}, p, { index: idx + 1 }));
+    const patterns = g.run(rows, { fileName: path.basename(filePath) })
+      .map((p, idx) => Object.assign({}, p, { index: idx + 1 }));
     return {
       key: g.key,
       label: g.label,
@@ -1389,6 +1498,7 @@ module.exports = {
   parseCSVWithHeaders,
   parseLoggedAt,
   validateHalfPatterns,
+  inferHalfFromVideoName,
   validatePassPatterns,
   validateShotPatterns,
   validateThrowInPatterns,

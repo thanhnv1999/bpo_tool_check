@@ -73,7 +73,7 @@ Cách dễ nhất, không cần nhớ lệnh — nháy đúp `run.bat` (hoặc c
 ============================================
   BPO Validate Tool
 ============================================
-[1] Validate CSV (chi terminal)
+[1] Validate CSV + Checktime (chi terminal)
 [2] Validate CSV (+HTML)
 [3] Capture + Summary (+HTML)
 [4] Summary (chi terminal)

@@ -13,6 +13,56 @@ Danh sách event phải thuộc MỘT hiệp duy nhất, không được trộn 
 - Hiệp 2 áp dụng tương tự.
 - ❌ ERROR: trong cùng một danh sách xuất hiện đồng thời marker của cả hiệp 1 và hiệp 2.
 
+### Đối chiếu tên video với hiệp trong dữ liệu (R1.4 / R1.5)
+
+Ngoài kiểm tra marker `period_change` ở trên, tool còn suy ra hiệp từ **tên video** rồi đối chiếu
+với hiệp tìm được trong dữ liệu, để phát hiện trường hợp gắn nhầm file / nhầm hiệp.
+
+**Nguồn lấy tên video**: cột `video_filename` trong CSV (lấy giá trị không rỗng đầu tiên); nếu cột
+này rỗng thì dùng tên file CSV.
+
+**Cách suy ra hiệp từ tên video** (theo thứ tự ưu tiên):
+
+1. Chuẩn hóa ký tự (NFKC — để tên ký tự full-width cũng nhận ra) và bỏ phần mở rộng file.
+2. Cắt lấy đoạn sau dấu `_` cuối cùng (gọi là "phần đuôi"). Nếu tên không có `_` nào thì lấy cả tên.
+3. So phần đuôi (không phân biệt hoa/thường) với bảng từ khóa:
+
+| Hiệp | Từ khóa nhận dạng ở phần đuôi |
+|---|---|
+| Hiệp 1 | `1st`, `前半`, `1本目` |
+| Hiệp 2 | `2nd`, `後半`, `2本目` |
+
+4. Nếu phần đuôi không khớp: quét cả tên tìm `前半` → hiệp 1, `後半` → hiệp 2. Hai từ tiếng Nhật
+   này an toàn để quét cả chuỗi vì không bao giờ trùng với ID hay ngày tháng trong tên file — khác
+   với `1st` / `1` bắt buộc phải nằm ở đuôi. Nếu tên chứa **cả hai** thì coi như không xác định được.
+5. Nếu vẫn không khớp: tên có dạng `<chuỗi số từ 6 chữ số trở lên>_1` hoặc `_2` thì nhận là hiệp 1 /
+   hiệp 2. Bắt buộc có prefix số dài để không nhận nhầm tên kết thúc bằng `_Angle_1` — đó là số hiệu
+   góc camera, không phải hiệp.
+6. Không khớp gì cả → không xác định được hiệp.
+
+### ⚠️ WARNING
+- **R1.4** — không xác định được hiệp từ tên video. Người dùng cần tự kiểm tra file thuộc hiệp mấy.
+- **R1.5** — tên video cho thấy một hiệp nhưng dữ liệu trong file là hiệp còn lại. Rule này chỉ áp
+  dụng khi dữ liệu trong file xác định đúng 1 hiệp; nếu file trộn cả 2 hiệp hoặc không có marker nào
+  thì đã bị bắt bởi ERROR ở mục trên nên không báo trùng.
+
+### Ví dụ
+
+| Tên video | Phần đuôi cắt được | Kết quả |
+|---|---|---|
+| `2026614-2026-06-07_1st.mp4` | `1st` | Hiệp 1 |
+| `1783310937470_vs_Rute11_後半.mp4` | `後半` | Hiệp 2 |
+| `1782133167490_2本目.MOV` | `2本目` | Hiệp 2 |
+| `SG VS MALAYSIA AFF 2026 - Angle 1_2nd.mp4` | `2nd` | Hiệp 2 |
+| `前半_圧縮.mp4` | `圧縮` | Hiệp 1 (nhận nhờ bước quét cả tên) |
+| `1785476099239_1.m4v` | `1` | Hiệp 1 (nhận nhờ bước prefix số) |
+| `1789541435667_IMG_0144.MOV` | `0144` | Không xác định → R1.4 |
+| `1788746627857_TRM_vs_甲南大_3rd.m4v` | `3rd` | Không xác định → R1.4 |
+
+**Lưu ý với trận nhiều hiệp**: các từ khóa `3rd`, `4th`, `3本目`, `4本目` KHÔNG nằm trong danh sách
+nhận dạng, nên file hiệp 3 / hiệp 4 (thường gặp ở trận giao hữu TRM) sẽ luôn ra cảnh báo R1.4. Đây
+là hành vi cố ý — tool chỉ biết 2 hiệp, các file này cần người kiểm tra thủ công.
+
 ---
 
 ## 2. Chuỗi PASS
@@ -84,6 +134,35 @@ Các event sau bắt buộc phải có `possession` LIỀN KỀ phía sau:
 - `pk`
 
 ❌ ERROR nếu event kế tiếp không phải `possession`.
+
+### Điều kiện riêng của `pk` (R5.2 / R5.3)
+
+Ngoài việc bắt buộc có `possession` ngay sau như trên, `pk` còn bắt buộc phải sinh ra từ một
+`foul` phía trước — quả phạt đền luôn xuất phát từ một lỗi đã được ghi nhận.
+
+**Cách xác định "event thực gần nhất phía trước"**: đi ngược từ `pk`, bỏ qua các dòng
+`possession`, event thực đầu tiên gặp phải chính là event cần xét. `period_change` KHÔNG bị bỏ
+qua — nếu gặp `period_change` trước khi gặp `foul` thì coi như KHÔNG tìm thấy `foul` (`pk` nằm
+ngay đầu hiệp là bất thường).
+
+- **❌ ERROR (R5.2)** — event thực gần nhất phía trước `pk` không phải `foul` (hoặc không tìm
+  thấy event thực nào phía trước).
+- **❌ ERROR (R5.3)** — `foul` tìm được và `pk` trùng team. Về nghiệp vụ, `foul` ghi đội phạm
+  lỗi còn `pk` ghi đội được hưởng phạt đền, nên hai đội này phải khác nhau. Rule này chỉ áp dụng
+  khi R5.2 đã đạt (tìm đúng `foul` phía trước) và CẢ HAI team đều là giá trị đội cụ thể — nếu một
+  trong hai rỗng hoặc bằng `neither` thì bỏ qua, vì không đủ dữ liệu để kết luận.
+
+Ví dụ chuỗi HỢP LỆ (dữ liệu thật):
+
+```
+foul        team=TeamR
+possession  team=neither
+possession  team=neither
+pk          team=TeamL
+possession  team=neither
+```
+
+`foul` (TeamR) và `pk` (TeamL) khác team → hợp lệ, không sinh R5.2/R5.3.
 
 ---
 
@@ -157,7 +236,7 @@ Mục 5 (ERROR) và mục 7 (thông tin) **độc lập** với nhau: mục 5 ch
 
 | Mức | Trường hợp |
 |---|---|
-| ❌ ERROR | Trộn hiệp 1 & 2; thiếu event mở/kết hiệp; sai thứ tự chuỗi PASS / SHOT / THROW_IN; sai điều kiện team; `shot_result = Goal` mà `shot ≠ goal`; `shot_result = Off Target` mà `shot ≠ off_target`; `foul` / `corner kick` / `offside` / `pk` không có `possession` ngay sau |
-| ⚠️ WARNING | `possession → shot → shot_result → possession`; `shot = off_target` nhưng `shot_result ≠ Off Target`; xuất hiện `goal_by_owngoal` |
+| ❌ ERROR | Trộn hiệp 1 & 2; thiếu event mở/kết hiệp; sai thứ tự chuỗi PASS / SHOT / THROW_IN; sai điều kiện team; `shot_result = Goal` mà `shot ≠ goal`; `shot_result = Off Target` mà `shot ≠ off_target`; `foul` / `corner kick` / `offside` / `pk` không có `possession` ngay sau; `pk` không có `foul` phía trước (R5.2); `foul` và `pk` trùng team (R5.3) |
+| ⚠️ WARNING | `possession → shot → shot_result → possession`; `shot = off_target` nhưng `shot_result ≠ Off Target`; xuất hiện `goal_by_owngoal`; không xác định được hiệp từ tên video (R1.4); tên video và hiệp trong dữ liệu không khớp (R1.5) |
 | ℹ️ THÔNG TIN | Thiếu `possession` có `match_status = out_of_play` (mục 7) — KHÔNG tính vào số lỗi/cảnh báo, KHÔNG ảnh hưởng exit code |
 ````

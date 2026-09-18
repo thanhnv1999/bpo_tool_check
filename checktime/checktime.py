@@ -160,7 +160,6 @@ def main(argv=None):
     print(line)
 
     results = []
-    all_gaps = []
     for index, path in enumerate(files, start=1):
         name = os.path.basename(path)
         if not os.path.isfile(path):
@@ -185,7 +184,6 @@ def main(argv=None):
         stats["label"] = "[{}]".format(index)
         stats["name"] = name
         results.append(stats)
-        all_gaps.extend(stats["gaps"])
 
         print("    Rows          : {}".format(stats["rows"]))
         print("    Log dau       : {:%Y-%m-%d %H:%M:%S}".format(stats["first"]))
@@ -203,38 +201,28 @@ def main(argv=None):
         return 1
 
     if not args.no_sensitivity:
-        print_sensitivity(results, all_gaps, args.threshold)
+        print_sensitivity(results, args.threshold)
 
     return 0
 
 
-def print_sensitivity(results, all_gaps, threshold):
-    """Bang do nhay: moi file mot cot."""
-    multi = len(results) > 1
-    print("\n Do nhay theo nguong - thoi gian LAM VIEC (phut)")
+def print_sensitivity(results, threshold):
+    """Bang do nhay: moi file mot bang rieng."""
+    print("\n Do nhay theo nguong (tung file) - phut")
 
-    header = "   {:>7}".format("nguong")
     for stats in results:
-        header += "{:>11}".format(stats["label"])
-    header += "{:>11}{:>9}".format("nghi(min)", "so lan")
-    print(header)
-
-    for th in sorted(set(SENSITIVITY_THRESHOLDS + [threshold])):
-        row = "   {:>6g}s".format(th)
-        for stats in results:
-            row += "{:>11.2f}".format(
-                sum(g for g in stats["gaps"] if g <= th) / 60)
-        breaks = [g for g in all_gaps if g > th]
-        row += "{:>11.2f}{:>9}".format(sum(breaks) / 60, len(breaks))
-        if th == threshold:
-            row += "  <- dang dung"
-        print(row)
-
-    print("   (cot nghi(min) va so lan la tong cua tat ca file)")
-    if multi:
-        print("\n   Chu thich cot:")
-        for stats in results:
-            print("     {} {}".format(stats["label"], stats["name"]))
+        print()
+        print(" {} {}".format(stats["label"], stats["name"]))
+        print("      nguong   lam viec    nghi(min)   so lan")
+        for th in sorted(set(SENSITIVITY_THRESHOLDS + [threshold])):
+            lam_viec = sum(g for g in stats["gaps"] if g <= th) / 60
+            nghi = sum(g for g in stats["gaps"] if g > th) / 60
+            so_lan = len([g for g in stats["gaps"] if g > th])
+            row = "      {:>5g}s  {:>9.2f}  {:>11.2f}  {:>7}".format(
+                th, lam_viec, nghi, so_lan)
+            if th == threshold:
+                row += "  <- dang dung"
+            print(row)
 
 
 if __name__ == "__main__":

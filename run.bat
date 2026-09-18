@@ -8,7 +8,7 @@ cls
 echo ============================================
 echo   BPO Validate Tool
 echo ============================================
-echo [1] Validate CSV (chi terminal)
+echo [1] Validate CSV + Checktime (chi terminal)
 echo [2] Validate CSV (+HTML)
 echo [3] Capture + Summary (+HTML)
 echo [4] Summary (chi terminal)
@@ -30,6 +30,21 @@ node validate.js csv
 set "rc=%errorlevel%"
 echo.
 echo Ket qua Validate: exit code %rc%
+echo.
+where python >nul 2>nul
+if errorlevel 1 goto run_1_nopython
+echo Dang chay Checktime...
+python checktime\checktime.py csv
+set "checktime_rc=%errorlevel%"
+echo.
+echo Ket qua Checktime: exit code %checktime_rc%
+goto run_1_pause
+
+:run_1_nopython
+echo Khong tim thay Python trong PATH, bo qua buoc Checktime.
+echo Goi y: cai dat Python hoac chay tay bang lenh "python checktime\checktime.py csv"
+
+:run_1_pause
 pause
 goto menu
 
