@@ -12,11 +12,13 @@ echo [1] Validate CSV + Checktime (chi terminal)
 echo [2] Validate CSV (+HTML)
 echo [3] Capture + Summary (+HTML)
 echo [4] Summary (chi terminal)
+echo [5] So sanh CSV truoc/sau (CSV Diff)
 echo [0] Thoat
 echo ============================================
-choice /c 12340 /n /m "Chon muc: "
+choice /c 123450 /n /m "Chon muc: "
 
-if errorlevel 5 goto end
+if errorlevel 6 goto end
+if errorlevel 5 goto run_5
 if errorlevel 4 goto run_4
 if errorlevel 3 goto run_3
 if errorlevel 2 goto run_2
@@ -87,6 +89,43 @@ node summary\summary.js csv
 set "rc=%errorlevel%"
 echo.
 echo Ket qua Summary: exit code %rc%
+pause
+goto menu
+
+:run_5
+echo.
+echo ============================================
+echo   So sanh hai file CSV export cua CUNG MOT video:
+echo   mot ban TRUOC khi sua, mot ban SAU khi sua.
+echo   Bao cao gom cac vung thay doi: doi noi dung, doi vi tri,
+echo   doi loai event, them moi, bi mat.
+echo   Co the keo tha file vao cua so nay de dan duong dan.
+echo ============================================
+set "diff_before="
+set "diff_after="
+set /p "diff_before=Duong dan file CSV BAN TRUOC (ban cu): "
+set /p "diff_after=Duong dan file CSV BAN SAU (ban moi): "
+
+if defined diff_before set diff_before=!diff_before:"=!
+if defined diff_after set diff_after=!diff_after:"=!
+
+if not defined diff_before goto run_5_missing
+if not defined diff_after goto run_5_missing
+
+echo.
+echo Dang chay CSV Diff...
+node csv-diff.js "!diff_before!" "!diff_after!"
+set "rc=!errorlevel!"
+echo.
+echo Ket qua CSV Diff: exit code !rc!
+echo   0 = hai file khong khac nhau ve noi dung
+echo   1 = co khac, xem muc CAC VUNG THAY DOI o tren
+pause
+goto menu
+
+:run_5_missing
+echo.
+echo Can nhap du duong dan ca hai file.
 pause
 goto menu
 

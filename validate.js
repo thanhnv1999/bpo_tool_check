@@ -1510,4 +1510,11 @@ module.exports = {
   collectFiles,
   GROUPS,
   CONTEXT_COLUMNS,
+  buildContext,
+  CONTEXT_SIZE,
+  paint,
+  padR,
+  padL,
+  C,
+  PAD,
 };
