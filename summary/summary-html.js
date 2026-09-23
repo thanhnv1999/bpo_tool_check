@@ -297,7 +297,7 @@ table.matrix td.zero { color: var(--muted); }
   background: var(--plane); border: 1px solid var(--grid);
   border-radius: 8px; overflow: hidden;
 }
-.phimgs img { width: 100%; height: auto; display: block; max-width: 968px; }
+.phimgs img { width: 100%; height: auto; display: block; max-width: 968px; cursor: zoom-in; }
 .phimgs figcaption {
   font-size: 11px; color: var(--muted); padding: 6px 8px;
   border-top: 1px solid var(--grid);
@@ -327,30 +327,79 @@ table.matrix td.zero { color: var(--muted); }
   padding: 28px; text-align: center; color: var(--ink-2); font-size: 14px;
 }
 .count { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+
+/* Sits between .head and .kpis, hidden while the file filter is "Tất cả".
+   The KPI tiles are above the filter bar, so when a single file is selected
+   the numbers change out of the reader's sight — this line is the receipt
+   that says which file they now describe. Negative top margin eats into
+   .head's 24px so an empty slot never shows when it is hidden. */
+.kpi-scope { font-size: 12px; color: var(--ink-2); margin: -12px 0 12px; }
+.kpi-scope b { font-weight: 600; }
+
+/* ── Lightbox ──────────────────────────────────────────────────────────────
+   The grid caps images at their native 968px so they are never upscaled
+   there. The lightbox deliberately lifts that cap: past 100% it is
+   interpolation, not detail, but a blurry-bigger crop is still what the
+   reviewer asked for when a marker is too small to read. It floats over the
+   document so zooming never costs them their scroll position. */
+body.lb-lock { overflow: hidden; }
+.lb[hidden] { display: none !important; }
+.lb { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.92); }
+.lb-stage {
+  position: absolute; inset: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.lb-stage img {
+  /* flex: none matters — the stage is a flex centre, and a flex item shrinks
+     to fit by default, which would silently cap a zoomed image at the
+     viewport width while lbState.scale still claimed the larger size (pan
+     limits are computed from that scale, so the image could then be dragged
+     right off the screen). */
+  flex: 0 0 auto;
+  display: block; max-width: none; max-height: none;
+  user-select: none; -webkit-user-drag: none; touch-action: none;
+}
+.lb-bar {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 2;
+  display: flex; gap: 8px; align-items: center; padding: 10px 14px;
+  background: linear-gradient(rgba(0,0,0,0.78), rgba(0,0,0,0));
+  color: #f2f2f0; font-size: 12px;
+}
+.lb-cap {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lb-cap.is-untrusted { color: #ff8f8f; font-weight: 600; }
+.lb-bar button {
+  flex: 0 0 auto; background: rgba(255,255,255,0.12); color: inherit;
+  border: 1px solid rgba(255,255,255,0.22); border-radius: 6px;
+  padding: 4px 9px; font: inherit; line-height: 1.4; cursor: pointer;
+}
+.lb-bar button:hover { background: rgba(255,255,255,0.24); }
+.lb-pct {
+  flex: 0 0 auto; min-width: 48px; text-align: center;
+  font-variant-numeric: tabular-nums; color: rgba(242,242,240,0.8);
+}
+.lb-hint {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  padding: 10px 14px; text-align: center; pointer-events: none;
+  font-size: 11px; color: rgba(242,242,240,0.6);
+  background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.72));
+}
 `;
 
 // ─── Static sections ──────────────────────────────────────────────────────────
 
-function buildKpis(report) {
-  const t = report.totals;
-
-  const tiles = [
-    { k: 'File đã tổng hợp', v: report.files.length, s: `${t.rows} dòng dữ liệu`, cls: '' },
-    { k: 'Pha đã liệt kê', v: t.phases, s: report.countGroups.join(' · '), cls: '' },
-    { k: 'Pha cần xem lại', v: `${t.phaseFlags} ⚠`, s: 'thiếu dữ liệu / chưa có mô tả',
-      cls: t.phaseFlags > 0 ? 'warn' : 'good' },
-    { k: 'Ném biên nghi vấn', v: `${t.throwInFlagged} ✗`,
-      s: `đã quét ${t.throwInScanned} throw_in · ${t.throwInUnknown} không xác định`,
-      cls: t.throwInFlagged > 0 ? 'crit' : 'good' },
-    { k: 'Team pha kế tiếp sai', v: `${t.nextFlagged} ✗`,
-      s: `đã quét ${t.nextTotal} pha · ${t.nextUnknown} không xác định`,
-      cls: t.nextFlagged > 0 ? 'crit' : 'good' },
-  ];
-
-  return '<div class="kpis">' + tiles.map(tile =>
-    `<div class="tile ${tile.cls}"><div class="k">${esc(tile.k)}</div>` +
-    `<div class="v">${esc(tile.v)}</div><div class="s">${esc(tile.s)}</div></div>`
-  ).join('') + '</div>';
+// The KPI tiles used to be baked in here from report.totals and never moved
+// again. They now follow the "File" filter (and only that filter — group/flag/
+// text narrow which rows are *listed*, not what the file contains), so the
+// numbers are rendered by renderKpis() in SCRIPT instead; this only lays out
+// the slots they land in. Same markup, same CSS, same tile order — the
+// difference is who fills them. #details next to it is already client-filled,
+// so this adds no new dependency on scripting that the page did not have.
+function buildKpis() {
+  return '<p class="kpi-scope" id="kpi-scope" hidden></p>' +
+    '<div class="kpis" id="kpis"></div>';
 }
 
 function buildFilters(report) {
@@ -394,6 +443,8 @@ const SCRIPT = `
   var REPORT = JSON.parse(document.getElementById('report-data').textContent);
   var host = document.getElementById('details');
   var counter = document.getElementById('details-count');
+  var kpiHost = document.getElementById('kpis');
+  var kpiScope = document.getElementById('kpi-scope');
 
   var EXPECT = { same: 'CÙNG team', differ: 'KHÁC team' };
   var GLYPH = { red: '✗', warn: '⚠' };
@@ -464,8 +515,79 @@ const SCRIPT = `
   // by side directly under its own description. imgMap is null for a file
   // with no manifest yet — every block below then simply omits the image
   // grid entirely, showing only the same description/metadata line as
-  // before this feature existed. No block ever links to a full-size image in
-  // a new tab; the image itself already is the full size.
+  // before this feature existed. No block links to a full-size image in a new
+  // tab either — the image in the grid already is the full size; clicking it
+  // opens the lightbox below, which is the only place it goes past 100%.
+
+  // ── KPI tiles ─────────────────────────────────────────────────────────────
+  //
+  // Recomputed from the files currently in scope instead of read off
+  // REPORT.totals, so picking one file in the "File" filter makes every tile
+  // describe that file alone; back on "Tất cả" the sums are identical to what
+  // buildReport() aggregated, because this is the same arithmetic over the
+  // same per-file fields (summary.js buildReport).
+  //
+  // Only the "File" filter reaches here. Nhóm pha / Cờ / Tìm decide which rows
+  // get *listed* below; they do not change what a file contains, and a count
+  // is a count — the same reason countsTable ignores them.
+  function statsFor(files) {
+    var s = {
+      rows: 0, phases: 0, phaseFlags: 0,
+      throwInScanned: 0, throwInFlagged: 0, throwInUnknown: 0,
+      nextTotal: 0, nextFlagged: 0, nextUnknown: 0
+    };
+
+    files.forEach(function (f) {
+      s.rows += f.rowCount;
+      s.phases += f.phases.length;
+      s.phaseFlags += f.phases.filter(function (p) { return p.flag; }).length;
+      s.throwInScanned += f.throwIn.scanned;
+      s.throwInFlagged += f.throwIn.flagged.length;
+      s.throwInUnknown += f.throwIn.unknown.length;
+      s.nextFlagged += f.nextPhase.flagged.length;
+      s.nextUnknown += f.nextPhase.unknown.length;
+      REPORT.nextPhaseGroups.forEach(function (k) {
+        s.nextTotal += f.nextPhase.perGroup[k].total;
+      });
+    });
+
+    return s;
+  }
+
+  function renderKpis(files) {
+    var s = statsFor(files);
+
+    var tiles = [
+      { k: 'File đã tổng hợp', v: files.length, s: s.rows + ' dòng dữ liệu', cls: '' },
+      { k: 'Pha đã liệt kê', v: s.phases, s: REPORT.countGroups.join(' · '), cls: '' },
+      { k: 'Pha cần xem lại', v: s.phaseFlags + ' ⚠', s: 'thiếu dữ liệu / chưa có mô tả',
+        cls: s.phaseFlags > 0 ? 'warn' : 'good' },
+      { k: 'Ném biên nghi vấn', v: s.throwInFlagged + ' ✗',
+        s: 'đã quét ' + s.throwInScanned + ' throw_in · ' + s.throwInUnknown + ' không xác định',
+        cls: s.throwInFlagged > 0 ? 'crit' : 'good' },
+      { k: 'Team pha kế tiếp sai', v: s.nextFlagged + ' ✗',
+        s: 'đã quét ' + s.nextTotal + ' pha · ' + s.nextUnknown + ' không xác định',
+        cls: s.nextFlagged > 0 ? 'crit' : 'good' }
+    ];
+
+    kpiHost.innerHTML = tiles.map(function (t) {
+      return '<div class="tile ' + t.cls + '"><div class="k">' + esc(t.k) + '</div>' +
+        '<div class="v">' + esc(t.v) + '</div><div class="s">' + esc(t.s) + '</div></div>';
+    }).join('');
+
+    // The tiles sit above the sticky filter bar, so a reader who picks a file
+    // can easily not see them change. Say it in words right next to them.
+    if (el.file.value) {
+      kpiScope.innerHTML = 'Đang lọc theo file <b>' + esc(el.file.value) +
+        '</b> — các ô số liệu bên dưới chỉ tính cho file này.';
+      kpiScope.hidden = false;
+    } else {
+      kpiScope.innerHTML = '';
+      kpiScope.hidden = true;
+    }
+
+    return s;
+  }
 
   // Bảng đếm — same shape as the terminal's per-file table (NHÓM | TỔNG |
   // TeamL | TeamR, plus a "Tổng 6 nhóm" footer). Read straight from
@@ -733,16 +855,22 @@ const SCRIPT = `
   function render() {
     var html = [];
     var shown = 0;
-    var files = 0;
+    var matched = [];
 
     REPORT.files.forEach(function (file, idx) {
       if (el.file.value && file.name !== el.file.value) return;
-      files++;
+      matched.push(file);
       var imgMap = REPORT.imageMaps ? REPORT.imageMaps[idx] : null;
-      var built = card(file, files <= 2, imgMap);
+      var built = card(file, matched.length <= 2, imgMap);
       shown += built.shown;
       html.push(built.html);
     });
+
+    // KPIs describe the files in scope, so they are rebuilt even when the
+    // scope turns out to be empty — leaving stale totals above an empty list
+    // is exactly the mismatch this change is here to remove.
+    var stats = renderKpis(matched);
+    var files = matched.length;
 
     if (!files) {
       host.innerHTML = '<div class="empty">Không có file nào khớp filter hiện tại.</div>';
@@ -752,11 +880,217 @@ const SCRIPT = `
 
     host.innerHTML = html.join('');
     counter.textContent = 'Hiện ' + files + ' / ' + REPORT.files.length + ' file · ' +
-      shown + ' dòng · tổng ' + REPORT.totals.phases + ' pha, ' +
-      REPORT.totals.throwInFlagged + ' ném biên nghi vấn, ' +
-      REPORT.totals.nextFlagged + ' cảnh báo đỏ pha kế tiếp' +
+      shown + ' dòng · tổng ' + stats.phases + ' pha, ' +
+      stats.throwInFlagged + ' ném biên nghi vấn, ' +
+      stats.nextFlagged + ' cảnh báo đỏ pha kế tiếp' +
       (files > 2 ? ' — 2 thẻ đầu mở sẵn' : '');
   }
+
+  // ── Lightbox ──────────────────────────────────────────────────────────────
+  //
+  // Screenshots are 968x545 (capture.js clips .analytics-video-container at a
+  // 1920x1080 viewport), and the grid already shows them at 1:1 or smaller, so
+  // there is no hidden resolution to reveal: zooming past 100% interpolates.
+  // It is still worth having — a marker that is too small to judge is easier
+  // to judge blurry-and-large. What this must not cost is the reader's place
+  // in the page, which is why it floats over the document, freezes the body
+  // and restores scrollY on close instead of resizing anything inline.
+  var lb = {
+    root: document.getElementById('lb'),
+    stage: document.getElementById('lb-stage'),
+    img: document.getElementById('lb-img'),
+    cap: document.getElementById('lb-cap'),
+    pct: document.getElementById('lb-pct')
+  };
+
+  var LB_MAX = 8;
+  var LB_STEP = 1.2;
+  var lbState = { open: false, scale: 1, min: 1, x: 0, y: 0, nw: 0, nh: 0, scrollY: 0 };
+  var lbDrag = null;
+
+  // The opening scale: fit inside the viewport, but never above 1. A 968px
+  // image on a wide monitor therefore opens at its true resolution rather
+  // than pre-blurred, and "min" doubles as the reset/fit target.
+  function lbFit() {
+    if (!lbState.nw || !lbState.nh) return 1;
+    return Math.min(1,
+      (window.innerWidth - 64) / lbState.nw,
+      (window.innerHeight - 128) / lbState.nh);
+  }
+
+  // Pan is clamped so an edge of the image can never travel inside the
+  // viewport: on an axis where the image is smaller than the screen it stays
+  // centered (range 0), otherwise it may move by exactly the overflow.
+  function lbClamp() {
+    var mx = Math.max(0, (lbState.nw * lbState.scale - window.innerWidth) / 2);
+    var my = Math.max(0, (lbState.nh * lbState.scale - window.innerHeight) / 2);
+    lbState.x = Math.min(mx, Math.max(-mx, lbState.x));
+    lbState.y = Math.min(my, Math.max(-my, lbState.y));
+  }
+
+  // Width (not transform: scale) drives the size so the browser resamples at
+  // the drawn resolution; translate only moves it.
+  function lbApply() {
+    lb.img.style.width = (lbState.nw * lbState.scale) + 'px';
+    lb.img.style.transform = 'translate(' + Math.round(lbState.x) + 'px,' + Math.round(lbState.y) + 'px)';
+    lb.pct.textContent = Math.round(lbState.scale * 100) + '%';
+    lb.img.style.cursor = lbState.scale > lbState.min + 0.0001
+      ? (lbDrag ? 'grabbing' : 'grab')
+      : 'zoom-in';
+  }
+
+  // Zoom around a viewport point, so whatever is under the cursor stays under
+  // the cursor — the whole reason this beats resizing in place. The stage is
+  // a full-viewport flex-centre, so its origin is the viewport centre.
+  function lbZoomAt(cx, cy, factor) {
+    var next = Math.min(LB_MAX, Math.max(lbState.min, lbState.scale * factor));
+    if (Math.abs(next - lbState.scale) < 0.0001) return;
+
+    var dx = cx - window.innerWidth / 2;
+    var dy = cy - window.innerHeight / 2;
+    var u = (dx - lbState.x) / lbState.scale;
+    var v = (dy - lbState.y) / lbState.scale;
+
+    lbState.scale = next;
+    lbState.x = dx - u * next;
+    lbState.y = dy - v * next;
+    lbClamp();
+    lbApply();
+  }
+
+  function lbReset() {
+    lbState.min = lbFit();
+    lbState.scale = lbState.min;
+    lbState.x = 0;
+    lbState.y = 0;
+    lbApply();
+  }
+
+  function lbOpen(src, caption, untrusted) {
+    lbState.scrollY = window.scrollY || window.pageYOffset || 0;
+
+    lb.cap.textContent = caption;
+    lb.cap.className = 'lb-cap' + (untrusted ? ' is-untrusted' : '');
+    lb.img.style.width = '';
+    lb.img.style.transform = '';
+    lb.img.alt = caption;
+    lb.img.src = src;
+
+    lb.root.hidden = false;
+    document.body.classList.add('lb-lock');
+    lbState.open = true;
+
+    // naturalWidth is only trustworthy once decoded; the grid image is
+    // usually cached, so the sync path is the common one.
+    if (lb.img.complete && lb.img.naturalWidth) {
+      lbState.nw = lb.img.naturalWidth;
+      lbState.nh = lb.img.naturalHeight;
+      lbReset();
+    } else {
+      lbState.nw = 0;
+      lbState.nh = 0;
+      lb.img.onload = function () {
+        lbState.nw = lb.img.naturalWidth;
+        lbState.nh = lb.img.naturalHeight;
+        lbReset();
+      };
+    }
+  }
+
+  function lbClose() {
+    if (!lbState.open) return;
+    lbState.open = false;
+    lbDrag = null;
+    lb.img.onload = null;
+    lb.root.hidden = true;
+    lb.img.removeAttribute('src');
+    document.body.classList.remove('lb-lock');
+    // body{overflow:hidden} keeps scrollTop in current browsers, but restoring
+    // it explicitly is what actually guarantees the promise made above.
+    window.scrollTo(0, lbState.scrollY);
+  }
+
+  // Delegated: #details is re-rendered on every filter change, so binding to
+  // the images themselves would go stale on the first keystroke.
+  host.addEventListener('click', function (ev) {
+    var img = ev.target && ev.target.closest ? ev.target.closest('.phimgs img') : null;
+    if (!img) return;
+    var fig = img.closest('figure');
+    var capEl = fig ? fig.querySelector('figcaption') : null;
+    var untrusted = Boolean(fig && fig.classList.contains('is-untrusted'));
+    var caption = (untrusted ? '⚠ ẢNH KHÔNG TIN CẬY — ' : '') +
+      (capEl ? capEl.textContent : (img.getAttribute('alt') || ''));
+    lbOpen(img.getAttribute('src'), caption, untrusted);
+  });
+
+  lb.root.addEventListener('wheel', function (ev) {
+    if (!lbState.open) return;
+    ev.preventDefault();
+    lbZoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? LB_STEP : 1 / LB_STEP);
+  }, { passive: false });
+
+  // Clicking the backdrop closes; clicking the image does not. A drag that
+  // ends on the image fires click on the image, so panning never closes.
+  lb.root.addEventListener('click', function (ev) {
+    if (ev.target === lb.root || ev.target === lb.stage) lbClose();
+  });
+
+  lb.img.addEventListener('dblclick', function (ev) {
+    ev.preventDefault();
+    var target = lbState.scale > lbState.min + 0.0001 ? lbState.min : Math.max(1, lbState.min * 2);
+    lbZoomAt(ev.clientX, ev.clientY, target / lbState.scale);
+  });
+
+  lb.img.addEventListener('pointerdown', function (ev) {
+    if (lbState.scale <= lbState.min + 0.0001) return;
+    ev.preventDefault();
+    lbDrag = { px: ev.clientX, py: ev.clientY, x: lbState.x, y: lbState.y };
+    try { lb.img.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    lbApply();
+  });
+
+  lb.img.addEventListener('pointermove', function (ev) {
+    if (!lbDrag) return;
+    lbState.x = lbDrag.x + (ev.clientX - lbDrag.px);
+    lbState.y = lbDrag.y + (ev.clientY - lbDrag.py);
+    lbClamp();
+    lbApply();
+  });
+
+  function lbEndDrag(ev) {
+    if (!lbDrag) return;
+    lbDrag = null;
+    try { lb.img.releasePointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    lbApply();
+  }
+  lb.img.addEventListener('pointerup', lbEndDrag);
+  lb.img.addEventListener('pointercancel', lbEndDrag);
+
+  document.getElementById('lb-in').addEventListener('click', function () {
+    lbZoomAt(window.innerWidth / 2, window.innerHeight / 2, LB_STEP);
+  });
+  document.getElementById('lb-out').addEventListener('click', function () {
+    lbZoomAt(window.innerWidth / 2, window.innerHeight / 2, 1 / LB_STEP);
+  });
+  document.getElementById('lb-fit').addEventListener('click', lbReset);
+  document.getElementById('lb-close').addEventListener('click', lbClose);
+
+  window.addEventListener('resize', function () {
+    if (!lbState.open) return;
+    lbState.min = lbFit();
+    if (lbState.scale < lbState.min) lbState.scale = lbState.min;
+    lbClamp();
+    lbApply();
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (!lbState.open) return;
+    if (ev.key === 'Escape') { lbClose(); return; }
+    var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    if (ev.key === '+' || ev.key === '=') { ev.preventDefault(); lbZoomAt(cx, cy, LB_STEP); }
+    else if (ev.key === '-' || ev.key === '_') { ev.preventDefault(); lbZoomAt(cx, cy, 1 / LB_STEP); }
+    else if (ev.key === '0') { ev.preventDefault(); lbReset(); }
+  });
 
   ['file', 'group', 'flag'].forEach(function (k) {
     el[k].addEventListener('change', render);
@@ -796,7 +1130,7 @@ function buildSummaryHtml(report, outPath) {
     <p>Tạo lúc ${esc(formatTimestamp(report.generatedAt))} · ${report.files.length} file · nhóm pha: ${esc(report.countGroups.join(', '))}</p>
   </div>
 
-  ${buildKpis(report)}
+  ${buildKpis()}
 
   <div id="details-anchor"></div>
   <h2 class="sec" style="margin-top:28px">Chi tiết theo từng file</h2>
@@ -811,7 +1145,22 @@ function buildSummaryHtml(report, outPath) {
   </p>
   <p class="legend">Báo cáo để review — không có khái niệm lỗi chặn.</p>
 
-</div></div>
+</div>
+
+  <div class="lb" id="lb" hidden>
+    <div class="lb-stage" id="lb-stage"><img id="lb-img" alt=""></div>
+    <div class="lb-bar">
+      <span class="lb-cap" id="lb-cap"></span>
+      <button type="button" id="lb-out" title="Thu nhỏ (-)">−</button>
+      <span class="lb-pct" id="lb-pct">100%</span>
+      <button type="button" id="lb-in" title="Phóng to (+)">+</button>
+      <button type="button" id="lb-fit" title="Về kích thước vừa màn (0)">Vừa màn</button>
+      <button type="button" id="lb-close" title="Đóng (Esc)">Đóng ✕</button>
+    </div>
+    <div class="lb-hint">Lăn chuột để phóng to / thu nhỏ quanh con trỏ · kéo để di chuyển · nháy đúp để đổi cỡ · Esc hoặc nháy nền để đóng</div>
+  </div>
+
+</div>
 <script type="application/json" id="report-data">${embedJson(clientReport)}</script>
 <script>${SCRIPT}</script>
 </body>

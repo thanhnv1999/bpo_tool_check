@@ -104,7 +104,7 @@ const SHOT_PAIRS = {
     `${t} dứt điểm hướng vào khung thành nhưng hậu vệ chặn được` },
   'on_target|off target': { flag: 'red', text: () =>
     `Mâu thuẫn — ghi hướng vào khung thành nhưng kết quả ra ngoài` },
-  'off_target|off target': { flag: null, text: t => `${t} dứt điểm ra ngoài khung thành` },
+  'off_target|off target': { flag: null, text: t => `${t} dứt điểm không trúng khung thành (ra ngoài, bị chặn ở cự ly gần, hoặc chệch hướng nhưng bóng vẫn trong sân)`},
   'off_target|blocked':   { flag: null,  text: t =>
     `${t} dứt điểm hướng ra ngoài khung thành và chạm hậu vệ` },
   'off_target|saved':     { flag: null,  text: t =>
