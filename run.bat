@@ -13,11 +13,13 @@ echo [2] Validate CSV (+HTML)
 echo [3] Capture + Summary (+HTML)
 echo [4] Summary (chi terminal)
 echo [5] So sanh CSV truoc/sau (CSV Diff)
+echo [6] Capture song song + Summary (nhieu cua so)
 echo [0] Thoat
 echo ============================================
-choice /c 123450 /n /m "Chon muc: "
+choice /c 1234560 /n /m "Chon muc: "
 
-if errorlevel 6 goto end
+if errorlevel 7 goto end
+if errorlevel 6 goto run_6
 if errorlevel 5 goto run_5
 if errorlevel 4 goto run_4
 if errorlevel 3 goto run_3
@@ -126,6 +128,42 @@ goto menu
 :run_5_missing
 echo.
 echo Can nhap du duong dan ca hai file.
+pause
+goto menu
+
+:run_6
+echo.
+echo ============================================
+echo   Capture song song: mo nhieu cua so trinh duyet cung luc,
+echo   moi cua so xu ly mot phan cac file CSV trong thu muc csv.
+echo   Moi cua so chi can dang nhap MOT lan du xu ly nhieu file.
+echo   Chup xong tat ca se tu tong hop bao cao mot lan.
+echo.
+echo   LUU Y: moi cua so chi cho dang nhap 5 phut, va cac dong ho
+echo   nay chay SONG SONG (khong cong don). Hay dang nhap ngay
+echo   khi tung cua so hien ra, dung roi may.
+echo.
+echo   File CSV van phai co ten ket thuc bang (video_id).csv
+echo ============================================
+set "conc="
+set /p "conc=So cua so chay cung luc (1-10): "
+if not defined conc goto run_6_missing
+
+echo.
+echo Dang chay Capture song song...
+node capture-parallel.js csv --concurrency=!conc!
+set "rc=!errorlevel!"
+echo.
+echo Ket qua: exit code !rc!
+if exist "summary-report.html" (
+    start "" "summary-report.html"
+)
+pause
+goto menu
+
+:run_6_missing
+echo.
+echo Can nhap so cua so chay cung luc.
 pause
 goto menu
 

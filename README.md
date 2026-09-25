@@ -137,6 +137,7 @@ Cách dễ nhất, không cần nhớ lệnh — nháy đúp `run.bat`:
 [3] Capture + Summary (+HTML)
 [4] Summary (chi terminal)
 [5] So sanh CSV truoc/sau (CSV Diff)
+[6] Capture song song + Summary (nhieu cua so)
 [0] Thoat
 ============================================
 ```
@@ -148,6 +149,7 @@ Cách dễ nhất, không cần nhớ lệnh — nháy đúp `run.bat`:
 | `[3]` | `capture.js csv` rồi `summary.js csv --html` | Hỏi Y/N trước khi chạy. Capture lỗi vẫn hỏi có chạy tiếp Summary không. Tự mở `summary-report.html` |
 | `[4]` | `summary.js csv` | |
 | `[5]` | `csv-diff.js <trước> <sau>` | Nhập 2 đường dẫn file. Kéo thả file vào cửa sổ CMD để dán đường dẫn cho nhanh |
+| `[6]` | `capture-parallel.js csv --concurrency=N` | Nhập số cửa sổ chạy cùng lúc. Chụp xong tất cả mới chạy Summary một lần, tự mở `summary-report.html` |
 
 Menu luôn đọc CSV trong thư mục `csv/`, trừ mục `[5]` (tự nhập đường dẫn).
 
@@ -222,6 +224,42 @@ những gì đã chụp.
 > Lần đầu dùng nên chạy `--dry-run` trước để xem tool nhận ra bao nhiêu mục tiêu —
 > lệnh này không mở browser nên không cần Chromium lẫn đăng nhập.
 
+### Capture song song — nhiều cửa sổ cùng lúc
+
+Khi có nhiều file CSV, chạy tuần tự rất lâu. `capture-parallel.js` chia file cho
+N cửa sổ trình duyệt chạy đồng thời, chờ tất cả xong rồi tự chạy Summary **một
+lần** để ra báo cáo gộp.
+
+```bash
+node capture-parallel.js csv --concurrency=3 --dry-run   # chỉ in cách chia file
+node capture-parallel.js csv --concurrency=3             # chạy thật
+node capture-parallel.js csv --concurrency=2 --stagger=8000
+node capture-parallel.js csv --concurrency=3 --no-summary
+```
+
+`N` là **số cửa sổ chạy cùng lúc**, không phải số file mỗi đợt. File được chia
+đều cho N cửa sổ, mỗi cửa sổ xử lý phần của mình tuần tự — nên **số lần đăng
+nhập luôn bằng N**, dù có bao nhiêu file. 10 file với `--concurrency=3` thành
+3 cửa sổ nhận 4/3/3 file.
+
+Vài điểm cần biết trước khi chạy:
+
+- **Đồng hồ 5 phút chờ đăng nhập chạy song song, không cộng dồn.** Mở N cửa sổ
+  nghĩa là cả N phải đăng nhập xong trong khoảng 5 phút. Cửa sổ hiện cách nhau
+  6s (đổi bằng `--stagger`), hãy đăng nhập ngay khi từng cái hiện ra.
+- **Hai file CSV cùng `video_id` sẽ làm tool dừng hẳn**, vì hai tiến trình sẽ
+  ghi đè lên nhau trong `capture/screenshots/<video_id>/`. Sửa tên file hoặc
+  tách ra chạy riêng.
+- **Có cửa sổ lỗi thì Summary vẫn chạy.** File chụp thiếu hiện nhãn
+  `⚠ chụp thiếu X/Y` trong báo cáo, chạy lại để bổ sung.
+- Mỗi cửa sổ là một tiến trình `capture.js` riêng, giữ nguyên mọi hành vi và
+  cơ chế chặn ghi dữ liệu của bản chạy đơn luồng.
+- Tool dùng `page.mouse` của Playwright nên **không chiếm chuột thật** — vẫn
+  dùng máy làm việc khác được trong lúc nó chạy.
+
+Càng nhiều cửa sổ càng tốn CPU và băng thông; đo trên máy dev thì 4 luồng nhanh
+khoảng 2.4 lần chứ không phải 4 lần. Nên thử `--concurrency=2` trước.
+
 ### Script Python
 
 ```bash
@@ -248,6 +286,7 @@ tool_validate_bpo/
 ├── validate.js              Tool validate — logic rule
 ├── html-report.js           Sinh HTML cho validate
 ├── csv-diff.js              Tool so sánh 2 bản CSV trước/sau
+├── capture-parallel.js      Chạy capture nhiều cửa sổ song song rồi gộp báo cáo
 ├── summary/
 │   ├── summary.js           Tool thống kê
 │   └── summary-html.js      Sinh HTML cho summary
